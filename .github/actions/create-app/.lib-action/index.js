@@ -29963,6 +29963,7 @@ function run() {
                     imageNamespace,
                     imageTag: c.tag,
                     imageRegistryId: registryId && c.build ? registryId : "docker-hub",
+                    imagePullPolicy: "Always",
                 };
                 if (c.env && Object.keys(c.env).length > 0) {
                     template.environmentVariables = Object.entries(c.env).map(([name, value]) => ({ name, value: String(value) }));

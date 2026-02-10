@@ -23,7 +23,7 @@ async function api(
   method: string,
   path: string,
   apiKey: string,
-  body?: object
+  body?: object,
 ) {
   const url = `${API_BASE}${path}`;
   const opts: RequestInit = {
@@ -71,12 +71,12 @@ function parseImageParts(fullImage: string): {
 
 function parseContainers(
   raw: string,
-  defaults: { registry: string; sha: string }
+  defaults: { registry: string; sha: string },
 ): ContainerDef[] {
   const parsed = yaml.load(raw);
   if (!Array.isArray(parsed)) {
     throw new Error(
-      "containers input must be a YAML list. Got: " + typeof parsed
+      "containers input must be a YAML list. Got: " + typeof parsed,
     );
   }
 
@@ -139,7 +139,7 @@ export async function run() {
     core.info(
       `Parsed ${containers.length} container(s): ` +
         `${buildContainers.length} to build, ` +
-        `${containers.length - buildContainers.length} pre-built`
+        `${containers.length - buildContainers.length} pre-built`,
     );
 
     // ── Step 1: Build & Push images ───────────────────────
@@ -150,7 +150,7 @@ export async function run() {
         await exec.exec(
           "docker",
           ["login", registry, "-u", registryUsername, "--password-stdin"],
-          { input: Buffer.from(registryPassword) }
+          { input: Buffer.from(registryPassword) },
         );
       }
 
@@ -184,17 +184,15 @@ export async function run() {
 
       const registriesResponse = await api("GET", "/registries", apiKey);
       const registryItems = registriesResponse?.items || [];
-      const searchName = (
-        bunnyRegistryName || registryUsername
-      ).toLowerCase();
+      const searchName = (bunnyRegistryName || registryUsername).toLowerCase();
 
       const existing = registryItems.find(
-        (r) => r.displayName?.toLowerCase() === searchName
+        (r) => r.displayName?.toLowerCase() === searchName,
       );
 
       if (existing) {
         core.info(
-          `Found existing registry: ${existing.displayName} (id: ${existing.id})`
+          `Found existing registry: ${existing.displayName} (id: ${existing.id})`,
         );
         registryId = String(existing.id);
       } else if (ensureBunnyRegistry) {
@@ -218,8 +216,7 @@ export async function run() {
     core.startGroup("Create Magic Containers application");
 
     // Map deployment_type input to API fields
-    const runtimeType =
-      deploymentType === "advanced" ? "Reserved" : "Shared";
+    const runtimeType = deploymentType === "advanced" ? "Reserved" : "Shared";
 
     const regionSettings: Record<string, unknown> = {};
     if (deploymentType === "single" && region) {
@@ -242,11 +239,12 @@ export async function run() {
         imageNamespace,
         imageTag: c.tag,
         imageRegistryId: registryId && c.build ? registryId : "docker-hub",
+        imagePullPolicy: "Always",
       };
 
       if (c.env && Object.keys(c.env).length > 0) {
         template.environmentVariables = Object.entries(c.env).map(
-          ([name, value]) => ({ name, value: String(value) })
+          ([name, value]) => ({ name, value: String(value) }),
         );
       }
 
@@ -311,7 +309,7 @@ export async function run() {
       }
       if (status !== "Active") {
         core.warning(
-          `App did not become active within ${timeout}s (last: ${status})`
+          `App did not become active within ${timeout}s (last: ${status})`,
         );
       }
     }
@@ -348,7 +346,7 @@ export async function run() {
         core.info(`Deployed URL: ${appUrl}`);
       } else {
         core.info(
-          "No endpoint URL found yet (may take a moment to provision)."
+          "No endpoint URL found yet (may take a moment to provision).",
         );
       }
       core.setOutput("app_url", appUrl);
@@ -362,7 +360,7 @@ export async function run() {
       core.info(
         `  Container: ${c.name} -> ${c.image}:${c.tag}` +
           (c.port ? ` (port ${c.port})` : "") +
-          (c.build ? " [built]" : " [pre-built]")
+          (c.build ? " [built]" : " [pre-built]"),
       );
     }
   } catch (e) {
