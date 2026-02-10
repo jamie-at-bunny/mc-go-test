@@ -1,0 +1,135 @@
+name: Create Magic Containers App
+author: bunny.net
+description: >
+  Create a Magic Containers application with one or more containers.
+  Supports building images from source alongside public registry images.
+
+inputs:
+  api_key:
+    description: Bunny.net account API key (AccessKey).
+    required: true
+
+  app_name:
+    description: Name for the Magic Containers application.
+    required: true
+
+  deployment_type:
+    description: "Deployment strategy: magic | single | advanced"
+    required: false
+    default: "magic"
+
+  region:
+    description: "Region code for single-region deployment (e.g. DE, US-NY). Ignored for magic."
+    required: false
+    default: ""
+
+  containers:
+    description: |
+      YAML list of container definitions. Each container supports:
+
+        - name:       (required) Unique container name within the app
+          image:      (required) Full image ref without tag (e.g. ghcr.io/org/api, redis, nginx)
+          tag:        Image tag (default: github.sha for built images, "latest" for non-built)
+          port:       Port the container listens on inside the pod
+          build:      true|false — whether to docker build & push this image (default: false)
+          context:    Docker build context path (default: ".")
+          dockerfile: Dockerfile path relative to context (default: "Dockerfile")
+          env:        Key-value map of environment variables
+
+      Example:
+        containers: |
+          - name: api
+            image: ghcr.io/myorg/my-api
+            port: 3000
+            build: true
+            env:
+              NODE_ENV: production
+
+          - name: redis
+            image: redis
+            tag: 7-alpine
+            port: 6379
+    required: true
+
+  registry:
+    description: "Container registry URL for built images (e.g. ghcr.io, docker.io)."
+    required: false
+    default: "ghcr.io"
+
+  registry_username:
+    description: Registry login username.
+    required: false
+    default: ""
+
+  registry_password:
+    description: "Registry login password/token (use GITHUB_TOKEN for ghcr.io)."
+    required: false
+    default: ""
+
+  bunny_registry_name:
+    description: Name of existing Bunny image registry to use.
+    required: false
+    default: ""
+
+  ensure_bunny_registry:
+    description: "If true and no matching Bunny registry exists, create one."
+    required: false
+    default: "false"
+
+  bunny_registry_pat:
+    description: Read-only PAT for Bunny to pull images from your registry.
+    required: false
+    default: ""
+
+  bunny_registry_type:
+    description: "Registry type for Bunny: Github | Docker"
+    required: false
+    default: "Github"
+
+  create_endpoint:
+    description: "Whether to create a public endpoint (true/false)."
+    required: false
+    default: "true"
+
+  endpoint_name:
+    description: "Name for the endpoint. Defaults to <app_name>-endpoint."
+    required: false
+    default: ""
+
+  endpoint_type:
+    description: "Endpoint type: CDN | Anycast"
+    required: false
+    default: "CDN"
+
+  endpoint_container:
+    description: >
+      Which container to expose via the endpoint (by name).
+      Defaults to the first container with a port defined.
+    required: false
+    default: ""
+
+  wait_for_deployment:
+    description: Wait and poll until the app is active.
+    required: false
+    default: "true"
+
+  deployment_timeout:
+    description: Max seconds to wait for deployment.
+    required: false
+    default: "300"
+
+outputs:
+  app_id:
+    description: The ID of the created Magic Containers application.
+  app_url:
+    description: The public URL of the deployed application.
+  endpoint_hostname:
+    description: The hostname assigned to the endpoint.
+
+runs:
+  using: "node20"
+  main: ".lib-action/index.js"
+
+branding:
+  color: "orange"
+  icon: "box"

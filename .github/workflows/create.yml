@@ -1,0 +1,59 @@
+name: Create App on Magic Containers
+
+on:
+  workflow_dispatch:
+
+jobs:
+  create:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Create & Deploy
+        id: create
+        uses: ./.github/actions/create-app
+        with:
+          api_key: ${{ secrets.BUNNYNET_API_KEY }}
+          app_name: mc-go-test
+
+          registry_username: ${{ github.actor }}
+          registry_password: ${{ secrets.GITHUB_TOKEN }}
+
+          ensure_bunny_registry: "true"
+          bunny_registry_pat: ${{ secrets.BUNNY_GHCR_PAT }}
+
+          containers: |
+            - name: api
+              image: ghcr.io/${{ github.repository }}
+              tag: ${{ github.sha }}
+              port: 8080
+              build: true
+              env:
+                REDIS_URL: redis://localhost:6379
+                PORT: "8080"
+
+            - name: worker
+              image: ghcr.io/${{ github.repository }}
+              tag: ${{ github.sha }}
+              env:
+                REDIS_URL: redis://localhost:6379
+
+            - name: redis
+              image: redis
+              tag: 8-alpine
+              port: 6379
+
+          endpoint_type: CDN
+          endpoint_container: api
+
+      - name: Summary
+        run: |
+          echo "### Created on Magic Containers" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "**App ID:** \`${{ steps.create.outputs.app_id }}\`" >> $GITHUB_STEP_SUMMARY
+          echo "**URL:** ${{ steps.create.outputs.app_url }}" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "Save the App ID as a repository variable called \`APP_ID\` then pushes to main will auto-deploy." >> $GITHUB_STEP_SUMMARY

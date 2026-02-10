@@ -1,0 +1,33 @@
+{
+  "name": "create-app",
+  "version": "0.1.0",
+  "main": "lib/main.js",
+  "private": true,
+  "scripts": {
+    "lint": "eslint src",
+    "test": "jest --silent --coverage --passWithNoTests",
+    "build": "ncc build src/main.ts -o .lib-action/"
+  },
+  "repository": "jamie-at-bunny/mc-go-test",
+  "dependencies": {
+    "@actions/core": "^1.11.1",
+    "@actions/exec": "^1.1.1",
+    "js-yaml": "^4.1.1"
+  },
+  "devDependencies": {
+    "@eslint/js": "^9.8.0",
+    "@types/jest": "^29.5.12",
+    "@types/js-yaml": "^4.0.9",
+    "@types/node": "^22.1.0",
+    "@typescript-eslint/eslint-plugin": "^8.0.1",
+    "@typescript-eslint/parser": "^8.0.1",
+    "@vercel/ncc": "^0.38.4",
+    "eslint": "^9.8.0",
+    "globals": "^15.9.0",
+    "jest": "^29.5.12",
+    "prettier": "^3.3.3",
+    "ts-jest": "^29.2.4",
+    "typescript": "^5.9.3",
+    "typescript-eslint": "^8.0.1"
+  }
+}

@@ -1,0 +1,14 @@
+# Binaries
+/api
+/worker
+*.exe
+*.dll
+*.so
+*.dylib
+
+# Test binary
+*.test
+
+# Go workspace
+go.work
+go.work.sum

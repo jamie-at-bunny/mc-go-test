@@ -1,0 +1,44 @@
+name: Deploy to Magic Containers
+
+on:
+  push:
+    branches: [main]
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build and push
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          push: true
+          tags: ghcr.io/${{ github.repository }}:${{ github.sha }}
+
+      - name: Update API container
+        uses: BunnyWay/actions/container-update-image@main
+        with:
+          api_key: ${{ secrets.BUNNYNET_API_KEY }}
+          app_id: ${{ vars.APP_ID }}
+          container: api
+          image_tag: ${{ github.sha }}
+
+      - name: Update Worker container
+        uses: BunnyWay/actions/container-update-image@main
+        with:
+          api_key: ${{ secrets.BUNNYNET_API_KEY }}
+          app_id: ${{ vars.APP_ID }}
+          container: worker
+          image_tag: ${{ github.sha }}
