@@ -4,6 +4,8 @@ import * as yaml from "js-yaml";
 
 const API_BASE = "https://api.bunny.net/mc";
 
+// ── Types ───────────────────────────────────────────────────
+
 interface ContainerDef {
   name: string;
   image: string;
@@ -15,11 +17,13 @@ interface ContainerDef {
   env: Record<string, string>;
 }
 
+// ── Helpers ─────────────────────────────────────────────────
+
 async function api(
   method: string,
   path: string,
   apiKey: string,
-  body?: object,
+  body?: object
 ) {
   const url = `${API_BASE}${path}`;
   const opts: RequestInit = {
@@ -46,14 +50,33 @@ async function api(
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
+function parseImageParts(fullImage: string): {
+  imageNamespace: string;
+  imageName: string;
+} {
+  // ghcr.io/bunnyway/mc-go-test -> namespace="bunnyway", name="mc-go-test"
+  // redis -> namespace="library", name="redis"
+  // ghcr.io/org/repo/api -> namespace="org/repo", name="api"
+  const parts = fullImage.split("/");
+  if (parts.length === 1) {
+    return { imageNamespace: "library", imageName: parts[0] };
+  }
+  // Remove registry host (first part if it contains a dot or colon)
+  const hasRegistryHost = parts[0].includes(".") || parts[0].includes(":");
+  const pathParts = hasRegistryHost ? parts.slice(1) : parts;
+  const imageName = pathParts.pop() || "";
+  const imageNamespace = pathParts.join("/") || "library";
+  return { imageNamespace, imageName };
+}
+
 function parseContainers(
   raw: string,
-  defaults: { registry: string; sha: string },
+  defaults: { registry: string; sha: string }
 ): ContainerDef[] {
   const parsed = yaml.load(raw);
   if (!Array.isArray(parsed)) {
     throw new Error(
-      "containers input must be a YAML list. Got: " + typeof parsed,
+      "containers input must be a YAML list. Got: " + typeof parsed
     );
   }
 
@@ -80,6 +103,8 @@ function parseContainers(
     };
   });
 }
+
+// ── Main ────────────────────────────────────────────────────
 
 export async function run() {
   try {
@@ -114,10 +139,10 @@ export async function run() {
     core.info(
       `Parsed ${containers.length} container(s): ` +
         `${buildContainers.length} to build, ` +
-        `${containers.length - buildContainers.length} pre-built`,
+        `${containers.length - buildContainers.length} pre-built`
     );
 
-    // Step 1: Build & Push images that need building
+    // ── Step 1: Build & Push images ───────────────────────
     if (buildContainers.length > 0) {
       core.startGroup("Build and push images");
 
@@ -125,7 +150,7 @@ export async function run() {
         await exec.exec(
           "docker",
           ["login", registry, "-u", registryUsername, "--password-stdin"],
-          { input: Buffer.from(registryPassword) },
+          { input: Buffer.from(registryPassword) }
         );
       }
 
@@ -151,50 +176,116 @@ export async function run() {
       core.endGroup();
     }
 
-    // Step 2: Ensure Bunny Image Registry
-    let registryId: number | undefined;
+    // ── Step 2: Ensure Bunny Image Registry ───────────────
+    let registryId: string | undefined;
 
     if (bunnyRegistryName || ensureBunnyRegistry) {
       core.startGroup("Ensure Bunny image registry");
 
-      const registries = await api("GET", "/registries", apiKey);
-      const searchName = (bunnyRegistryName || registryUsername).toLowerCase();
+      const registriesResponse = await api("GET", "/registries", apiKey);
+      const registryItems = registriesResponse?.items || [];
+      const searchName = (
+        bunnyRegistryName || registryUsername
+      ).toLowerCase();
 
-      const existing = (Array.isArray(registries) ? registries : []).find(
-        (r) => r.name?.toLowerCase() === searchName,
+      const existing = registryItems.find(
+        (r) => r.displayName?.toLowerCase() === searchName
       );
 
       if (existing) {
         core.info(
-          `Found existing registry: ${existing.name} (id: ${existing.id})`,
+          `Found existing registry: ${existing.displayName} (id: ${existing.id})`
         );
-        registryId = existing.id;
+        registryId = String(existing.id);
       } else if (ensureBunnyRegistry) {
         core.info("Creating Bunny image registry...");
         const created = await api("POST", "/registries", apiKey, {
-          name: bunnyRegistryName || registryUsername,
-          registryType: bunnyRegistryType,
-          username: registryUsername,
-          personalAccessToken: bunnyRegistryPat || registryPassword,
+          displayName: bunnyRegistryName || registryUsername,
+          type: bunnyRegistryType,
+          passwordCredentials: {
+            userName: registryUsername,
+            password: bunnyRegistryPat || registryPassword,
+          },
         });
-        registryId = created.id;
+        registryId = String(created.id);
         core.info(`Created registry (id: ${registryId})`);
       }
 
       core.endGroup();
     }
 
-    // Step 3: Create the App
+    // ── Step 3: Create the App ────────────────────────────
     core.startGroup("Create Magic Containers application");
 
-    const appPayload: Record<string, unknown> = {
-      name: appName,
-      deploymentType,
-    };
+    // Map deployment_type input to API fields
+    const runtimeType =
+      deploymentType === "advanced" ? "Reserved" : "Shared";
 
+    const regionSettings: Record<string, unknown> = {};
     if (deploymentType === "single" && region) {
-      appPayload.region = region;
+      regionSettings.requiredRegionIds = [region];
+      regionSettings.allowedRegionIds = [region];
+      regionSettings.maxAllowedRegions = 1;
+    } else {
+      regionSettings.requiredRegionIds = [];
+      regionSettings.allowedRegionIds = [];
     }
+
+    // Build container templates inline with the app
+    const containerTemplates = containers.map((c) => {
+      const { imageNamespace, imageName } = parseImageParts(c.image);
+
+      const template: Record<string, unknown> = {
+        name: c.name,
+        image: `${c.image}:${c.tag}`,
+        imageName,
+        imageNamespace,
+        imageTag: c.tag,
+        imageRegistryId: registryId && c.build ? registryId : "docker-hub",
+      };
+
+      if (c.env && Object.keys(c.env).length > 0) {
+        template.environmentVariables = Object.entries(c.env).map(
+          ([name, value]) => ({ name, value: String(value) })
+        );
+      }
+
+      if (c.port && createEndpoint) {
+        const exposeContainerName =
+          endpointContainer ||
+          containers.find((ct) => ct.port)?.name ||
+          containers[0].name;
+
+        if (c.name === exposeContainerName) {
+          const endpointPayload: Record<string, unknown> = {
+            displayName: endpointName,
+          };
+
+          if (endpointType === "CDN") {
+            endpointPayload.cdn = {
+              portMappings: [{ containerPort: c.port }],
+            };
+          } else if (endpointType === "Anycast") {
+            endpointPayload.anycast = {
+              type: "IPv4",
+              portMappings: [{ containerPort: c.port }],
+            };
+          }
+
+          template.endpoints = [endpointPayload];
+        }
+      }
+
+      return template;
+    });
+
+    const appPayload = {
+      name: appName,
+      runtimeType,
+      autoScaling: { min: 1, max: 3 },
+      regionSettings,
+      containerTemplates,
+    };
 
     const app = await api("POST", "/apps", apiKey, appPayload);
     const appId = app.id;
@@ -203,78 +294,7 @@ export async function run() {
 
     core.endGroup();
 
-    // Step 4: Add each container
-    core.startGroup(`Add ${containers.length} container(s) to the app`);
-
-    const containerIdMap: Record<string, string> = {};
-
-    for (const c of containers) {
-      core.info(`Adding container: ${c.name} (${c.image}:${c.tag})`);
-
-      const containerPayload: Record<string, unknown> = {
-        name: c.name,
-        image: c.image,
-        imageTag: c.tag,
-      };
-
-      if (registryId && c.build) {
-        containerPayload.containerRegistryId = registryId;
-      }
-
-      if (c.env && Object.keys(c.env).length > 0) {
-        containerPayload.environmentVariables = c.env;
-      }
-
-      const created = await api(
-        "POST",
-        `/apps/${appId}/containers`,
-        apiKey,
-        containerPayload,
-      );
-      containerIdMap[c.name] = created.id;
-      core.info(`  ${c.name} added (id: ${created.id})`);
-    }
-
-    core.endGroup();
-
-    // Step 5: Create endpoint
-    if (createEndpoint) {
-      core.startGroup("Create endpoint");
-
-      const exposeContainerName =
-        endpointContainer ||
-        containers.find((c) => c.port)?.name ||
-        containers[0].name;
-
-      const exposeContainerId = containerIdMap[exposeContainerName];
-      if (!exposeContainerId) {
-        throw new Error(
-          `Could not find container "${exposeContainerName}" for endpoint`,
-        );
-      }
-
-      const exposePort =
-        containers.find((c) => c.name === exposeContainerName)?.port || 80;
-
-      await api(
-        "POST",
-        `/apps/${appId}/containers/${exposeContainerId}/endpoints`,
-        apiKey,
-        {
-          name: endpointName,
-          type: endpointType,
-          port: exposePort,
-        },
-      );
-
-      core.info(
-        `Endpoint '${endpointName}' created (${endpointType}, ` +
-          `exposing: ${exposeContainerName}:${exposePort})`,
-      );
-      core.endGroup();
-    }
-
-    // Step 6: Deploy
+    // ── Step 4: Deploy ────────────────────────────────────
     core.startGroup("Deploy application");
     await api("POST", `/apps/${appId}/deploy`, apiKey);
     core.info("Deploy triggered.");
@@ -284,33 +304,37 @@ export async function run() {
       let status = "";
       while (Date.now() < deadline) {
         const appStatus = await api("GET", `/apps/${appId}`, apiKey);
-        status = appStatus?.status || appStatus?.state || "";
+        status = appStatus?.status || "";
         core.info(`  Status: ${status}`);
-        if (/^(active|running)$/i.test(status)) break;
+        if (status === "Active") break;
         await sleep(10_000);
       }
-      if (!/^(active|running)$/i.test(status)) {
+      if (status !== "Active") {
         core.warning(
-          `App did not become active within ${timeout}s (last: ${status})`,
+          `App did not become active within ${timeout}s (last: ${status})`
         );
       }
     }
     core.endGroup();
 
-    // Step 7: Retrieve endpoint URL
+    // ── Step 5: Retrieve endpoint URL ─────────────────────
     if (createEndpoint) {
       core.startGroup("Retrieve deployed URL");
 
       const appDetails = await api("GET", `/apps/${appId}`, apiKey);
 
-      let hostname = "";
-      const appContainers =
-        appDetails?.containers || appDetails?.containerTemplates || [];
-      for (const ct of appContainers) {
-        const endpoints = ct.endpoints || [];
-        if (endpoints.length > 0) {
-          hostname = endpoints[0].hostname || endpoints[0].url || "";
-          break;
+      // Check displayEndpoint first (top-level convenience field)
+      let hostname = appDetails?.displayEndpoint?.address || "";
+
+      // Fall back to digging through container templates
+      if (!hostname) {
+        const appContainers = appDetails?.containerTemplates || [];
+        for (const ct of appContainers) {
+          const endpoints = ct.endpoints || [];
+          if (endpoints.length > 0) {
+            hostname = endpoints[0].publicHost || "";
+            break;
+          }
         }
       }
 
@@ -324,7 +348,7 @@ export async function run() {
         core.info(`Deployed URL: ${appUrl}`);
       } else {
         core.info(
-          "No endpoint URL found yet (may take a moment to provision).",
+          "No endpoint URL found yet (may take a moment to provision)."
         );
       }
       core.setOutput("app_url", appUrl);
@@ -338,7 +362,7 @@ export async function run() {
       core.info(
         `  Container: ${c.name} -> ${c.image}:${c.tag}` +
           (c.port ? ` (port ${c.port})` : "") +
-          (c.build ? " [built]" : " [pre-built]"),
+          (c.build ? " [built]" : " [pre-built]")
       );
     }
   } catch (e) {
