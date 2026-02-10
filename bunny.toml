@@ -2,7 +2,7 @@ name = "mc-go-test"
 
 [[containers]]
 name = "api"
-image = "ghcr.io/bunnyway/mc-go-test"
+image = "ghcr.io/jamie-at-bunny/mc-go-test"
 build = true
 dockerfile = "Dockerfile"
 context = "."
@@ -20,7 +20,7 @@ context = "."
 
 [[containers]]
 name = "worker"
-image = "ghcr.io/bunnyway/mc-go-test"
+image = "ghcr.io/jamie-at-bunny/mc-go-test"
 
   [containers.env]
   REDIS_URL = "localhost:6379"
