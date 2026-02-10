@@ -1,0 +1,31 @@
+name = "mc-go-test"
+
+[[containers]]
+name = "api"
+image = "ghcr.io/bunnyway/mc-go-test"
+build = true
+dockerfile = "Dockerfile"
+context = "."
+
+  [containers.env]
+  REDIS_URL = "localhost:6379"
+  PORT = "8080"
+
+  [[containers.endpoints]]
+  name = "web"
+  type = "cdn"
+
+    [[containers.endpoints.ports]]
+    container = 8080
+
+[[containers]]
+name = "worker"
+image = "ghcr.io/bunnyway/mc-go-test"
+
+  [containers.env]
+  REDIS_URL = "localhost:6379"
+
+[[containers]]
+name = "redis"
+image = "redis"
+tag = "8-alpine"

@@ -1,5 +1,5 @@
 name: Create Magic Containers App
-author: bunny.net
+author: Bunny Devs
 description: >
   Create a Magic Containers application with one or more containers.
   Supports building images from source alongside public registry images.
@@ -9,9 +9,15 @@ inputs:
     description: Bunny.net account API key (AccessKey).
     required: true
 
+  config:
+    description: "Path to bunny.toml config file. If present, container and endpoint config is read from this file."
+    required: false
+    default: "bunny.toml"
+
   app_name:
-    description: Name for the Magic Containers application.
-    required: true
+    description: "Name for the Magic Containers application. Overrides name in bunny.toml."
+    required: false
+    default: ""
 
   deployment_type:
     description: "Deployment strategy: magic | single | advanced"
@@ -49,7 +55,8 @@ inputs:
             image: redis
             tag: 7-alpine
             port: 6379
-    required: true
+    required: false
+    default: ""
 
   registry:
     description: "Container registry URL for built images (e.g. ghcr.io, docker.io)."
@@ -127,9 +134,9 @@ outputs:
     description: The hostname assigned to the endpoint.
 
 runs:
-  using: "node20"
-  main: ".lib-action/index.js"
+  using: 'node20'
+  main: '.lib-action/index.js'
 
 branding:
-  color: "orange"
-  icon: "box"
+  color: 'orange'
+  icon: 'box'
