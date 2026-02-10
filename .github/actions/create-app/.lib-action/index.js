@@ -29911,20 +29911,52 @@ function run() {
                 }
                 core.endGroup();
             }
-            // ── Step 2: Ensure Bunny Image Registry ───────────────
-            let registryId;
-            if (bunnyRegistryName || ensureBunnyRegistry) {
-                core.startGroup("Ensure Bunny image registry");
-                const registriesResponse = yield api("GET", "/registries", apiKey);
-                const registryItems = (registriesResponse === null || registriesResponse === void 0 ? void 0 : registriesResponse.items) || [];
+            // ── Step 2: Ensure Bunny Image Registries ──────────────
+            core.startGroup("Ensure Bunny image registries");
+            const registriesResponse = yield api("GET", "/registries", apiKey);
+            const registryItems = (registriesResponse === null || registriesResponse === void 0 ? void 0 : registriesResponse.items) || [];
+            core.info(`Found ${registryItems.length} existing registry(ies)`);
+            for (const r of registryItems) {
+                core.info(`  - ${r.displayName} (id: ${r.id}, host: ${r.hostName || "n/a"}, public: ${r.isPublic || false})`);
+            }
+            // Find or create a Docker Hub registry for public images
+            const hasPublicImages = containers.some((c) => !c.build);
+            let dockerHubRegistryId;
+            if (hasPublicImages) {
+                const dockerHubRegistry = registryItems.find((r) => {
+                    var _a;
+                    return r.hostName === "docker.io" ||
+                        ((_a = r.displayName) === null || _a === void 0 ? void 0 : _a.toLowerCase().includes("docker"));
+                });
+                if (dockerHubRegistry) {
+                    dockerHubRegistryId = String(dockerHubRegistry.id);
+                    core.info(`Using Docker Hub registry: ${dockerHubRegistry.displayName} (id: ${dockerHubRegistryId})`);
+                }
+                else {
+                    core.info("No Docker Hub registry found. Creating one for public images...");
+                    const created = yield api("POST", "/registries", apiKey, {
+                        displayName: "Docker Hub",
+                        type: "DockerHub",
+                        passwordCredentials: {
+                            userName: "public",
+                            password: "public",
+                        },
+                    });
+                    dockerHubRegistryId = String(created.id);
+                    core.info(`Created Docker Hub registry (id: ${dockerHubRegistryId})`);
+                }
+            }
+            // Find or create a private registry for built images (GHCR, etc.)
+            let privateRegistryId;
+            if (buildContainers.length > 0 && (bunnyRegistryName || ensureBunnyRegistry)) {
                 const searchName = (bunnyRegistryName || registryUsername).toLowerCase();
                 const existing = registryItems.find((r) => { var _a; return ((_a = r.displayName) === null || _a === void 0 ? void 0 : _a.toLowerCase()) === searchName; });
                 if (existing) {
-                    core.info(`Found existing registry: ${existing.displayName} (id: ${existing.id})`);
-                    registryId = String(existing.id);
+                    core.info(`Found private registry: ${existing.displayName} (id: ${existing.id})`);
+                    privateRegistryId = String(existing.id);
                 }
                 else if (ensureBunnyRegistry) {
-                    core.info("Creating Bunny image registry...");
+                    core.info("Creating private image registry...");
                     const created = yield api("POST", "/registries", apiKey, {
                         displayName: bunnyRegistryName || registryUsername,
                         type: bunnyRegistryType,
@@ -29933,11 +29965,11 @@ function run() {
                             password: bunnyRegistryPat || registryPassword,
                         },
                     });
-                    registryId = String(created.id);
-                    core.info(`Created registry (id: ${registryId})`);
+                    privateRegistryId = String(created.id);
+                    core.info(`Created private registry (id: ${privateRegistryId})`);
                 }
-                core.endGroup();
             }
+            core.endGroup();
             // ── Step 3: Create the App ────────────────────────────
             core.startGroup("Create Magic Containers application");
             // Map deployment_type input to API fields
@@ -29962,7 +29994,9 @@ function run() {
                     imageName,
                     imageNamespace,
                     imageTag: c.tag,
-                    imageRegistryId: registryId && c.build ? registryId : "docker-hub",
+                    imageRegistryId: c.build && privateRegistryId
+                        ? privateRegistryId
+                        : dockerHubRegistryId || "",
                     imagePullPolicy: "Always",
                 };
                 if (c.env && Object.keys(c.env).length > 0) {
